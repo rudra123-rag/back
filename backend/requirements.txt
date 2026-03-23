@@ -1,4 +1,5 @@
 fastapi
+multipart
 uvicorn
 redis-om
 google-generativeai
