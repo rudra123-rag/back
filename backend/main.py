@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 app= FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000","https://721cc47a-9417-427a-8222-5d8a3e5ca527.e1-us-east-azure.choreoapps.dev/"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
