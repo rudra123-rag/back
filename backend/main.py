@@ -1,5 +1,4 @@
-from fastapi import FastAPI,HTTPException,File,UploadFile
-from redis_om import get_redis_connection,HashModel
+from fastapi import FastAPI,HTTPException,File,UploadFile,Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
@@ -8,6 +7,10 @@ from dotenv import load_dotenv
 import shutil
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy import create_engine, Column, String, Integer, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime
 
 
 
@@ -19,17 +22,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-redis=get_redis_connection(host="redis-11291.crce179.ap-south-1-1.ec2.cloud.redislabs.com",port=11291
-                                                     ,password="1r9U9xYYFD54e1KhFB0IGBPpS4Y7DEA6",
-                                                     decode_responses=True)
 
-class Contact(HashModel):
-    name:str
-    email:str
-    message:str
+# SQLAlchemy Database Configuration
+DATABASE_URL = "sqlite:///./contacts.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-    class Meta:
-        database=redis
+# SQLAlchemy Model for Contact
+class Contact(Base):
+    __tablename__ = "contacts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    message = Column(String(1000), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 
 # Load environment variables
@@ -149,6 +169,21 @@ Guidelines:
 class ChatRequest(BaseModel):
     message: str
 
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
+class ContactResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    message: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to PortfolioBot! Send POST /chat with your query."}
@@ -177,10 +212,23 @@ def get_profile():
 def health_check():
     return {"status": "ok"}
 
-@app.post("/contact")
-def submit_contact(contact:Contact):
-    contact.save()
-    return {"message": "Thank you for reaching out! We will get back to you soon."}
+@app.post("/contact", response_model=ContactResponse)
+def submit_contact(request: ContactRequest, db: Session = Depends(get_db)):
+    """Submit a contact form with name, email, and message"""
+    try:
+        # Create new contact record
+        contact = Contact(
+            name=request.name,
+            email=request.email,
+            message=request.message
+        )
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+        return contact
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/upload")
 def upload_file(file:UploadFile=File(...)):

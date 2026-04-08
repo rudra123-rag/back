@@ -9,4 +9,5 @@ python-multipart
 python-jose
 aiofiles
 requests
+sqlalchemy
 
